@@ -49,14 +49,37 @@ def content_type_kb():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def content_type_with_back_kb():
+    """Клавиатура выбора типа контента с кнопкой 'Назад'"""
+    types = ["text", "photo", "video", "document", "audio", "voice"]
+    rows = [[InlineKeyboardButton(text=t, callback_data=f"ct:{t}")] for t in types]
+    rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data="lm_content_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def cancel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="lm_cancel")]])
 
 
+def back_kb(callback_data: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data=callback_data)]
+    ])
+
+
 def button_choice_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Да", callback_data="btn_yes"), InlineKeyboardButton(text="Нет", callback_data="btn_no")],
+        [InlineKeyboardButton(text="Да", callback_data="btn_yes"),
+         InlineKeyboardButton(text="Нет", callback_data="btn_no")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="lm_cancel")],
+    ])
+
+
+def button_choice_with_back_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Да", callback_data="btn_yes"),
+         InlineKeyboardButton(text="Нет", callback_data="btn_no")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="lm_button_back")],
     ])
 
 

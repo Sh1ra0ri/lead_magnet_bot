@@ -8,6 +8,7 @@ from bot.filters.is_admin import IsAdmin
 from bot.keyboards.inline import (
     leadmagnets_list_kb, leadmagnet_view_kb, leadmagnet_edit_kb,
     content_type_kb, cancel_kb, button_choice_kb, yes_no_kb, admin_menu_kb,
+    content_type_with_back_kb, back_kb, button_choice_with_back_kb,
 )
 from bot.db.queries.leadmagnets import (
     list_leadmagnets, get_leadmagnet, create_leadmagnet, delete_leadmagnet,
@@ -18,9 +19,6 @@ from bot.db.queries.messages import add_message, delete_message, count_messages
 router = Router()
 router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
-
-
-# ---------- вспомогательные отрисовки (без хаков с callback.data) ----------
 
 async def _show_list(message, pool: asyncpg.Pool):
     items = await list_leadmagnets(pool)
@@ -37,8 +35,6 @@ async def _show_view(message, pool: asyncpg.Pool, lm_id: int):
         reply_markup=leadmagnet_view_kb(lm_id, lm["is_active"]),
     )
 
-
-# ---------- список / просмотр ----------
 
 @router.callback_query(F.data == "lm_list")
 async def lm_list(callback: CallbackQuery, pool: asyncpg.Pool):
@@ -69,8 +65,6 @@ async def lm_set_inactive(callback: CallbackQuery, pool: asyncpg.Pool):
     await _show_view(callback.message, pool, lm_id)
 
 
-# ---------- удаление ----------
-
 @router.callback_query(F.data.startswith("lm_delete:"))
 async def lm_delete_confirm(callback: CallbackQuery):
     lm_id = int(callback.data.split(":")[1])
@@ -89,8 +83,6 @@ async def lm_delete_yes(callback: CallbackQuery, pool: asyncpg.Pool):
     await _show_list(callback.message, pool)
 
 
-# ---------- редактирование сообщений ----------
-
 @router.callback_query(F.data.startswith("lm_edit:"))
 async def lm_edit(callback: CallbackQuery, pool: asyncpg.Pool):
     lm_id = int(callback.data.split(":")[1])
@@ -108,8 +100,6 @@ async def lm_msg_del(callback: CallbackQuery, pool: asyncpg.Pool):
     await callback.answer("Удалено")
 
 
-# ---------- создание / добавление сообщений ----------
-
 @router.callback_query(F.data == "lm_add")
 async def lm_add_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LeadMagnetCreate.name)
@@ -122,7 +112,7 @@ async def lm_add_name(message: Message, state: FSMContext, pool: asyncpg.Pool):
     lm_id = await create_leadmagnet(pool, message.text)
     await state.update_data(lm_id=lm_id, is_new=True)
     await state.set_state(LeadMagnetCreate.content_type)
-    await message.answer("Выберите тип первого сообщения:", reply_markup=content_type_kb())
+    await message.answer("Выберите тип первого сообщения:", reply_markup=content_type_with_back_kb())
 
 
 @router.callback_query(F.data.startswith("lm_msg_add:"))
@@ -130,7 +120,7 @@ async def lm_msg_add_start(callback: CallbackQuery, state: FSMContext):
     lm_id = int(callback.data.split(":")[1])
     await state.update_data(lm_id=lm_id, is_new=False)
     await state.set_state(LeadMagnetCreate.content_type)
-    await callback.message.edit_text("Выберите тип сообщения:", reply_markup=content_type_kb())
+    await callback.message.edit_text("Выберите тип сообщения:", reply_markup=content_type_with_back_kb())
     await callback.answer()
 
 
@@ -140,7 +130,15 @@ async def lm_add_content_type(callback: CallbackQuery, state: FSMContext):
     await state.update_data(content_type=content_type)
     await state.set_state(LeadMagnetCreate.content)
     prompt = "Отправьте текст сообщения:" if content_type == "text" else f"Отправьте файл ({content_type}):"
-    await callback.message.edit_text(prompt, reply_markup=cancel_kb())
+    await callback.message.edit_text(prompt, reply_markup=back_kb("lm_content_back"))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lm_content_back")
+async def lm_content_back(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору типа контента"""
+    await state.set_state(LeadMagnetCreate.content_type)
+    await callback.message.edit_text("Выберите тип сообщения:", reply_markup=content_type_with_back_kb())
     await callback.answer()
 
 
@@ -163,18 +161,37 @@ async def lm_add_content(message: Message, state: FSMContext):
     elif content_type == "voice" and message.voice:
         file_id = message.voice.file_id
     else:
-        await message.answer("Не тот тип, отправьте ещё раз.", reply_markup=cancel_kb())
+        await message.answer("Не тот тип, отправьте ещё раз.", reply_markup=back_kb("lm_content_back"))
         return
 
     await state.update_data(text=text, file_id=file_id)
     await state.set_state(LeadMagnetCreate.button_choice)
-    await message.answer("Добавить кнопку-ссылку?", reply_markup=button_choice_kb())
+    await message.answer("Добавить кнопку-ссылку?", reply_markup=button_choice_with_back_kb())
+
+
+@router.callback_query(F.data == "lm_button_back")
+async def lm_button_back(callback: CallbackQuery, state: FSMContext):
+    """Возврат к вводу контента"""
+    data = await state.get_data()
+    content_type = data["content_type"]
+    await state.set_state(LeadMagnetCreate.content)
+    prompt = "Отправьте текст сообщения:" if content_type == "text" else f"Отправьте файл ({content_type}):"
+    await callback.message.edit_text(prompt, reply_markup=back_kb("lm_content_back"))
+    await callback.answer()
 
 
 @router.callback_query(LeadMagnetCreate.button_choice, F.data == "btn_yes")
 async def lm_button_yes(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LeadMagnetCreate.button_text)
-    await callback.message.edit_text("Текст кнопки:", reply_markup=cancel_kb())
+    await callback.message.edit_text("Текст кнопки:", reply_markup=back_kb("lm_button_text_back"))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lm_button_text_back")
+async def lm_button_text_back(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору кнопки"""
+    await state.set_state(LeadMagnetCreate.button_choice)
+    await callback.message.edit_text("Добавить кнопку-ссылку?", reply_markup=button_choice_with_back_kb())
     await callback.answer()
 
 
@@ -182,7 +199,15 @@ async def lm_button_yes(callback: CallbackQuery, state: FSMContext):
 async def lm_button_text(message: Message, state: FSMContext):
     await state.update_data(button_text=message.text)
     await state.set_state(LeadMagnetCreate.button_url)
-    await message.answer("Ссылка (URL):", reply_markup=cancel_kb())
+    await message.answer("Ссылка (URL):", reply_markup=back_kb("lm_button_url_back"))
+
+
+@router.callback_query(F.data == "lm_button_url_back")
+async def lm_button_url_back(callback: CallbackQuery, state: FSMContext):
+    """Возврат к вводу текста кнопки"""
+    await state.set_state(LeadMagnetCreate.button_text)
+    await callback.message.edit_text("Текст кнопки:", reply_markup=back_kb("lm_button_text_back"))
+    await callback.answer()
 
 
 @router.message(LeadMagnetCreate.button_url)
@@ -215,7 +240,7 @@ async def _save_and_ask_next(message: Message, state: FSMContext, pool: asyncpg.
 @router.callback_query(F.data == "lm_more_yes")
 async def lm_more_yes(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LeadMagnetCreate.content_type)
-    await callback.message.edit_text("Тип следующего сообщения:", reply_markup=content_type_kb())
+    await callback.message.edit_text("Тип следующего сообщения:", reply_markup=content_type_with_back_kb())
     await callback.answer()
 
 
@@ -226,8 +251,6 @@ async def lm_done(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ---------- отмена (работает на любом шаге создания) ----------
-
 @router.callback_query(F.data == "lm_cancel")
 async def lm_cancel(callback: CallbackQuery, state: FSMContext, pool: asyncpg.Pool):
     data = await state.get_data()
@@ -235,7 +258,7 @@ async def lm_cancel(callback: CallbackQuery, state: FSMContext, pool: asyncpg.Po
     if lm_id and data.get("is_new"):
         count = await count_messages(pool, lm_id)
         if count == 0:
-            await delete_leadmagnet(pool, lm_id)  # чистим пустую заготовку, если ни одного сообщения не добавили
+            await delete_leadmagnet(pool, lm_id)
     await state.clear()
     await callback.message.edit_text("Создание отменено.", reply_markup=admin_menu_kb())
     await callback.answer()
