@@ -44,7 +44,20 @@ def leadmagnet_edit_kb(lm_id, messages):
 
 def content_type_kb():
     types = ["text", "photo", "video", "document", "audio", "voice"]
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=f"ct:{t}")] for t in types])
+    rows = [[InlineKeyboardButton(text=t, callback_data=f"ct:{t}")] for t in types]
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="lm_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def cancel_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="lm_cancel")]])
+
+
+def button_choice_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Да", callback_data="btn_yes"), InlineKeyboardButton(text="Нет", callback_data="btn_no")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="lm_cancel")],
+    ])
 
 
 def yes_no_kb(yes_cb, no_cb):
