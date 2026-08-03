@@ -20,6 +20,7 @@ router = Router()
 router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
 
+
 async def _show_list(message, pool: asyncpg.Pool):
     items = await list_leadmagnets(pool)
     if not items:
@@ -136,9 +137,18 @@ async def lm_add_content_type(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "lm_content_back")
 async def lm_content_back(callback: CallbackQuery, state: FSMContext):
-    """Возврат к выбору типа контента"""
-    await state.set_state(LeadMagnetCreate.content_type)
-    await callback.message.edit_text("Выберите тип сообщения:", reply_markup=content_type_with_back_kb())
+    data = await state.get_data()
+    is_new = data.get("is_new", False)
+
+    if is_new:
+        await state.set_state(LeadMagnetCreate.name)
+        await callback.message.delete()
+        await callback.message.answer("Введите название лид-магнита:", reply_markup=cancel_kb())
+    else:
+        await callback.message.delete()
+        await callback.message.answer("Возврат к редактированию", reply_markup=admin_menu_kb())
+        await state.clear()
+
     await callback.answer()
 
 
@@ -171,12 +181,9 @@ async def lm_add_content(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "lm_button_back")
 async def lm_button_back(callback: CallbackQuery, state: FSMContext):
-    """Возврат к вводу контента"""
-    data = await state.get_data()
-    content_type = data["content_type"]
-    await state.set_state(LeadMagnetCreate.content)
-    prompt = "Отправьте текст сообщения:" if content_type == "text" else f"Отправьте файл ({content_type}):"
-    await callback.message.edit_text(prompt, reply_markup=back_kb("lm_content_back"))
+    await state.set_state(LeadMagnetCreate.content_type)
+    await callback.message.delete()
+    await callback.message.answer("Выберите тип сообщения:", reply_markup=content_type_with_back_kb())
     await callback.answer()
 
 
@@ -189,9 +196,9 @@ async def lm_button_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "lm_button_text_back")
 async def lm_button_text_back(callback: CallbackQuery, state: FSMContext):
-    """Возврат к выбору кнопки"""
     await state.set_state(LeadMagnetCreate.button_choice)
-    await callback.message.edit_text("Добавить кнопку-ссылку?", reply_markup=button_choice_with_back_kb())
+    await callback.message.delete()
+    await callback.message.answer("Добавить кнопку-ссылку?", reply_markup=button_choice_with_back_kb())
     await callback.answer()
 
 
@@ -204,9 +211,9 @@ async def lm_button_text(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "lm_button_url_back")
 async def lm_button_url_back(callback: CallbackQuery, state: FSMContext):
-    """Возврат к вводу текста кнопки"""
     await state.set_state(LeadMagnetCreate.button_text)
-    await callback.message.edit_text("Текст кнопки:", reply_markup=back_kb("lm_button_text_back"))
+    await callback.message.delete()
+    await callback.message.answer("Текст кнопки:", reply_markup=back_kb("lm_button_text_back"))
     await callback.answer()
 
 
